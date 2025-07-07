@@ -1,6 +1,7 @@
 {
   "name": "telepicker-bot",
   "version": "1.0.0",
+  "description": "Telegram Giveaway Bot with Google Sheets & Drive backup",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,8 +10,9 @@
     "dotenv": "^17.0.1",
     "express": "^4.18.2",
     "express-session": "^1.17.3",
-    "googleapis": "^127.0.0",
-    "telegraf": "^4.12.3",
+    "googleapis": "^132.0.0",
+    "node-cron": "^3.0.2",
+    "telegraf": "^4.12.2",
     "uuid": "^9.0.0"
   }
 }
