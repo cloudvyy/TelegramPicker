@@ -173,7 +173,7 @@ bot.on('callback_query', async ctx => {
     const entry = {
       id: userId,
       username: ctx.from.username || '(no username)',
-      time: new Date().toLocaleString()
+      time: new Date().toISOString()
     };
     g.participants.push(entry);
 
