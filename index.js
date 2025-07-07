@@ -5,12 +5,14 @@ const { google } = require('googleapis');
 const { Telegraf, Markup } = require('telegraf');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+
 const app = express();
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// ✅ Express session
 app.use(session({ secret: 'keyboard cat', resave: false, saveUninitialized: true }));
 
-// Google OAuth2 Setup
+// ✅ OAuth2 client
 const oauth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
   process.env.CLIENT_SECRET,
@@ -18,84 +20,79 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 let oauthToken = null;
+const tokenPath = './token.json';
 
+// ✅ /auth route
 app.get('/auth', (req, res) => {
-  const authUrl = oauth2Client.generateAuthUrl({
+  const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive'
-    ]
+    scope: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
   });
-  res.redirect(authUrl);
+  res.redirect(url);
 });
 
+// ✅ OAuth callback
 app.get('/oauth2callback', async (req, res) => {
   const { code } = req.query;
-  const { tokens } = await oauth2Client.getToken(code);
-  oauth2Client.setCredentials(tokens);
-  fs.writeFileSync('token.json', JSON.stringify(tokens));
-  oauthToken = tokens;
-  res.send('✅ Google Sheets API authorized!');
-});
-
-app.listen(3000, () => {
-  console.log('🚀 Server running at http://localhost:3000');
-  if (fs.existsSync('token.json')) {
-    oauthToken = JSON.parse(fs.readFileSync('token.json'));
-    oauth2Client.setCredentials(oauthToken);
-    console.log('✅ Google Sheets API authorized!');
+  try {
+    const { tokens } = await oauth2Client.getToken(code);
+    oauth2Client.setCredentials(tokens);
+    fs.writeFileSync(tokenPath, JSON.stringify(tokens));
+    oauthToken = tokens;
+    res.send('✅ Google Sheets API authorized!');
+  } catch (err) {
+    console.error('OAuth error:', err);
+    res.send('❌ Authorization failed.');
   }
 });
 
-// Runtime State
-const userConfigs = new Map();
+// ✅ Load saved token
+if (fs.existsSync(tokenPath)) {
+  oauthToken = JSON.parse(fs.readFileSync(tokenPath));
+  oauth2Client.setCredentials(oauthToken);
+  console.log('✅ Google Sheets API authorized!');
+}
+
 const boundChannels = new Map();
+const userConfigs = new Map();
 const activeGiveaways = new Map();
 
 function getUserConfig(userId) {
   if (!userConfigs.has(userId)) {
-    userConfigs.set(userId, {
-      customFormat: null,
-      awaitingCustomFormat: false
-    });
+    userConfigs.set(userId, { customFormat: null, awaitingCustomFormat: false });
   }
   return userConfigs.get(userId);
 }
 
 function getConfig(userId) {
-  const config = getUserConfig(userId);
+  const cfg = getUserConfig(userId);
   return {
     winnerCount: 10,
-    customFormat: config.customFormat || null
+    customFormat: cfg.customFormat || null
   };
 }
 
 function showConfigMenu(ctx) {
   const config = getUserConfig(ctx.from.id);
-  const text = `⚙️ Giveaway Configuration:\n🏆 Winner Count: 10\n📝 Custom Format: ${config.customFormat ? 'Custom' : 'Default'}\n\nChoose an option to configure:`;
-  return ctx.reply(text, Markup.inlineKeyboard([
+  return ctx.reply(`⚙️ Giveaway Configuration:\n🏆 Winner Count: 10\n📝 Custom Format: ${config.customFormat ? 'Custom' : 'Default'}`, Markup.inlineKeyboard([
     [Markup.button.callback('Set Custom Format', 'set_custom_format')],
     [Markup.button.callback('Reset to Default', 'reset_config')]
   ]));
 }
 
-async function createSheet(sheetTitle) {
+async function createSheet(title) {
   const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
   const sheet = await sheets.spreadsheets.create({
     resource: {
-      properties: { title: sheetTitle },
+      properties: { title },
       sheets: [{
-        properties: {
-          title: 'Sheet1',
-          gridProperties: { frozenRowCount: 1 }
-        },
+        properties: { title: 'Sheet1' },
         data: [{
           rowData: [{
             values: [
-              { userEnteredValue: { stringValue: 'User ID' }, userEnteredFormat: { textFormat: { bold: true } } },
-              { userEnteredValue: { stringValue: 'Username' }, userEnteredFormat: { textFormat: { bold: true } } },
-              { userEnteredValue: { stringValue: 'Join Time' }, userEnteredFormat: { textFormat: { bold: true } } }
+              { userEnteredValue: { stringValue: 'User ID' } },
+              { userEnteredValue: { stringValue: 'Username' } },
+              { userEnteredValue: { stringValue: 'Join Time' } }
             ]
           }]
         }]
@@ -114,88 +111,70 @@ async function createSheet(sheetTitle) {
   return `https://docs.google.com/spreadsheets/d/${sheet.data.spreadsheetId}/edit`;
 }
 
-// Bot Start
-bot.start(async (ctx) => {
-  await ctx.reply('🎉 Welcome! Use /run in your channel to start a giveaway.', {
-    reply_markup: {
-      keyboard: [[
-        '⚙️ Configure Giveaway',
-        '🔗 Bind Channel',
-        '❌ Unbind Channel'
-      ], ['📋 My Bound Channels', 'ℹ️ Help']],
-      resize_keyboard: true
-    }
-  });
+// ✅ Telegraf Commands
+bot.start(ctx => {
+  ctx.reply('🎉 Welcome to Giveaway Bot!', Markup.keyboard([
+    ['⚙️ Configure Giveaway', '🔗 Bind Channel'],
+    ['📋 My Bound Channels', '❌ Unbind Channel']
+  ]).resize());
 });
 
-bot.on('message', async (ctx) => {
+bot.on('message', async ctx => {
   const userId = ctx.from.id;
-  const config = getUserConfig(userId);
+  const cfg = getUserConfig(userId);
 
-  if (config.awaitingCustomFormat) {
-    config.customFormat = ctx.message.text;
-    config.awaitingCustomFormat = false;
-    await ctx.reply('✅ Custom format saved!');
-    return showConfigMenu(ctx);
+  if (cfg.awaitingCustomFormat) {
+    cfg.customFormat = ctx.message.text;
+    cfg.awaitingCustomFormat = false;
+    return ctx.reply('✅ Custom format saved!');
   }
 
-  const text = ctx.message.text;
-
-  if (text === '⚙️ Configure Giveaway') return showConfigMenu(ctx);
-  if (text === '🔗 Bind Channel') return ctx.reply('📢 Please forward a message from your channel to me.');
-  if (text === '❌ Unbind Channel') {
-    const removed = [...boundChannels.entries()].filter(([_, uid]) => uid === userId);
+  if (ctx.message.text === '⚙️ Configure Giveaway') return showConfigMenu(ctx);
+  if (ctx.message.text === '📋 My Bound Channels') {
+    const list = [...boundChannels.entries()].filter(([, uid]) => uid === userId);
+    return ctx.reply(list.length ? list.map(([id]) => `📢 ${id}`).join('\n') : '⚠️ No bound channels.');
+  }
+  if (ctx.message.text === '🔗 Bind Channel') return ctx.reply('📨 Forward a post from your channel.');
+  if (ctx.message.text === '❌ Unbind Channel') {
+    let removed = [...boundChannels.entries()].filter(([, uid]) => uid === userId);
     removed.forEach(([cid]) => boundChannels.delete(cid));
-    return ctx.reply(removed.length ? '✅ All channels unbound.' : '⚠️ No channels bound.');
-  }
-  if (text === '📋 My Bound Channels') {
-    const list = [...boundChannels.entries()]
-      .filter(([_, uid]) => uid === userId)
-      .map(([cid]) => `📢 ${cid}`);
-    return ctx.reply(list.length ? list.join('\n') : '⚠️ No channels bound.');
-  }
-  if (text === 'ℹ️ Help') {
-    return ctx.reply(`📖 Help Guide:\n\n1. Use ⚙️ Configure Giveaway to set winner format\n2. Forward a post from your channel to bind it\n3. Use /run in the channel to start a giveaway\n4. Use /draw in the channel to pick winners`);
+    return ctx.reply(removed.length ? '✅ Unbound.' : '⚠️ Nothing to unbind.');
   }
 
   if (ctx.message.forward_from_chat) {
     boundChannels.set(ctx.message.forward_from_chat.id, userId);
-    return ctx.reply('✅ Channel bound successfully!');
+    return ctx.reply('✅ Channel bound!');
   }
 });
 
-// Callback Handler
-bot.on('callback_query', async (ctx) => {
+// ✅ Callback Queries
+bot.on('callback_query', async ctx => {
   const userId = ctx.from.id;
+  const data = ctx.callbackQuery.data;
   const config = getUserConfig(userId);
-  const action = ctx.callbackQuery.data;
 
-  if (action === 'set_custom_format') {
+  if (data === 'set_custom_format') {
     config.awaitingCustomFormat = true;
-    await ctx.answerCbQuery();
-    return ctx.editMessageText('📝 Enter your custom format. Use {count} and {winners}');
+    return ctx.editMessageText('📝 Enter your custom format (use {count}, {winners})');
   }
 
-  if (action === 'reset_config') {
+  if (data === 'reset_config') {
     userConfigs.set(userId, { customFormat: null, awaitingCustomFormat: false });
-    await ctx.answerCbQuery('✅ Configuration reset.');
     return showConfigMenu(ctx);
   }
 
-  if (action.startsWith('join_')) {
-    const giveawayId = action.split('_')[1];
-    const g = [...activeGiveaways.values()].find(x => x.id === giveawayId);
-    if (!g) return ctx.answerCbQuery('❌ Giveaway not found or expired.');
+  if (data.startsWith('join_')) {
+    const id = data.split('_')[1];
+    const g = [...activeGiveaways.values()].find(g => g.id === id);
+    if (!g) return ctx.answerCbQuery('❌ Giveaway ended.');
 
-    if (g.winnersDrawn) return ctx.answerCbQuery('❌ Giveaway already ended.');
+    if (g.participants.some(p => p.id === userId)) return ctx.answerCbQuery('✅ Already joined.');
 
     const entry = {
       id: userId,
       username: ctx.from.username || '(no username)',
       time: new Date().toLocaleString()
     };
-
-    if (g.participants.find(p => p.id === userId)) return ctx.answerCbQuery('✅ Already joined!');
     g.participants.push(entry);
 
     const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
@@ -203,24 +182,19 @@ bot.on('callback_query', async (ctx) => {
       spreadsheetId: g.sheetUrl.split('/')[5],
       range: 'Sheet1',
       valueInputOption: 'RAW',
-      requestBody: {
-        values: [[entry.id, entry.username, entry.time]]
-      }
+      requestBody: { values: [[entry.id, entry.username, entry.time]] }
     });
 
-    await ctx.answerCbQuery('🎉 You joined the giveaway!');
-
+    ctx.answerCbQuery('🎉 Joined!');
     try {
       await bot.telegram.editMessageText(
-        g.channelId,
-        g.messageId,
-        null,
-        `🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n\n📊 Entries: ${g.participants.length}`,
+        g.channelId, g.messageId, null,
+        `🎉 GIVEAWAY STARTED!\nClick below to join.\n\n📊 Entries: ${g.participants.length}`,
         {
           reply_markup: {
             inline_keyboard: [
               [{ text: '📊 View Sheet', url: g.sheetUrl }],
-              [{ text: '✨ Participate', callback_data: `join_${giveawayId}` }]
+              [{ text: '✨ Participate', callback_data: `join_${g.id}` }]
             ]
           }
         }
@@ -229,77 +203,65 @@ bot.on('callback_query', async (ctx) => {
   }
 });
 
-// Handle /run and /draw
-bot.on('channel_post', async (ctx) => {
-  const messageText = ctx.channelPost.text?.trim().toLowerCase();
+// ✅ Giveaway Run & Draw
+bot.on('channel_post', async ctx => {
+  const text = ctx.channelPost.text?.trim().toLowerCase();
   const originalMsgId = ctx.channelPost.message_id;
+  const chatId = ctx.chat.id;
 
-  if (messageText === '/run') {
-    const userId = boundChannels.get(ctx.chat.id);
+  if (text === '/run') {
+    const userId = boundChannels.get(chatId);
     if (!userId) return;
 
-    const giveawayId = uuidv4();
+    const id = uuidv4();
     const sheetUrl = await createSheet(`Giveaway_${Date.now()}`);
-
-    const message = await ctx.reply('🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n\n📊 Entries: 0', {
+    const msg = await ctx.reply(`🎉 GIVEAWAY STARTED!\nClick below to join.\n\n📊 Entries: 0`, {
       reply_markup: {
         inline_keyboard: [
           [{ text: '📊 View Sheet', url: sheetUrl }],
-          [{ text: '✨ Participate', callback_data: `join_${giveawayId}` }]
+          [{ text: '✨ Participate', callback_data: `join_${id}` }]
         ]
       }
     });
 
-    activeGiveaways.set(ctx.chat.id, {
-      id: giveawayId,
-      channelId: ctx.chat.id,
-      messageId: message.message_id,
+    activeGiveaways.set(chatId, {
+      id,
+      channelId: chatId,
+      messageId: msg.message_id,
       sheetUrl,
       userId,
-      participants: [],
-      winnersDrawn: false
+      participants: []
     });
 
-    try { await bot.telegram.deleteMessage(ctx.chat.id, originalMsgId); } catch (_) {}
+    try { await bot.telegram.deleteMessage(chatId, originalMsgId); } catch (_) {}
   }
 
-  if (messageText === 'draw' || messageText === '/draw') {
-    const g = activeGiveaways.get(ctx.chat.id);
+  if (text === '/draw') {
+    const g = activeGiveaways.get(chatId);
     if (!g || g.participants.length === 0) return;
 
-    const config = getConfig(g.userId);
-    const winners = shuffle(g.participants).slice(0, config.winnerCount);
-    const text = (config.customFormat || '🎉 Winners:\n{winners}')
+    const cfg = getConfig(g.userId);
+    const winners = shuffle(g.participants).slice(0, cfg.winnerCount);
+    const format = (cfg.customFormat || '🎉 Winners:\n{winners}')
       .replace('{count}', winners.length)
       .replace('{winners}', winners.map((u, i) => `${i + 1}. @${u.username}`).join('\n'));
 
-    await ctx.reply(text);
+    await ctx.reply(format);
 
-    g.winnersDrawn = true;
-
-    // Update giveaway message to disable Participate
+    // Disable join button after draw
     try {
-      await bot.telegram.editMessageText(
-        g.channelId,
-        g.messageId,
-        null,
-        `🎉 GIVEAWAY ENDED!\n\n🏆 Winners drawn.\n📊 Entries: ${g.participants.length}`,
-        {
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '📊 View Sheet', url: g.sheetUrl }],
-              [{ text: '❌ Giveaway Ended', callback_data: 'closed' }]
-            ]
-          }
+      await bot.telegram.editMessageText(chatId, g.messageId, null, `🎉 Giveaway Ended!\n\n📊 Final Entries: ${g.participants.length}`, {
+        reply_markup: {
+          inline_keyboard: [[{ text: '📊 View Sheet', url: g.sheetUrl }]]
         }
-      );
+      });
     } catch (_) {}
 
-    try { await bot.telegram.deleteMessage(ctx.chat.id, originalMsgId); } catch (_) {}
+    activeGiveaways.delete(chatId);
+    try { await bot.telegram.deleteMessage(chatId, originalMsgId); } catch (_) {}
   }
 });
 
-// Shuffle function
 function shuffle(array) {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -309,4 +271,13 @@ function shuffle(array) {
   return arr;
 }
 
-bot.launch().then(() => console.log('✅ Bot launched!'));
+// ✅ Start everything
+app.listen(3000, () => {
+  console.log('🚀 Server running at http://localhost:3000');
+});
+
+if (process.env.NODE_ENV === 'production') {
+  bot.launch({ dropPendingUpdates: true }).then(() => console.log('🤖 Bot started (prod)'));
+} else {
+  bot.launch().then(() => console.log('🤖 Bot started (dev)'));
+}
