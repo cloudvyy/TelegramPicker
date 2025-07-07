@@ -56,4 +56,4 @@ REDIRECT_URI=https://your-railway-app.up.railway.app/oauth2callback
 
 ## 📄 License
 
-MIT © [YourName or Project]
+MIT © [MyPickerBot]
