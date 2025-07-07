@@ -41,7 +41,7 @@ Deploy on **Railway** without credit card:
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/your-referral-link)
 
 Or use this referral link for bonus:  
-**🔗 [railway.app?referral=your-user](https://railway.app?referral=your-user)**
+**🔗 [[railway.app?referral=your-user](https://railway.app?referral=your-user](https://railway.com?referralCode=JsglRy))**
 
 > 📝 Don't forget to authorize Google Sheets (visit `/auth`) once deployed.
 
