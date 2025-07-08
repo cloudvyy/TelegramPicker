@@ -21,6 +21,7 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 let giveaways = {};
+let channelConfig = {};
 
 function loadGiveaways() {
   try {
@@ -45,7 +46,6 @@ function backupToDrive() {
     fields: 'files(id, name)'
   }, (err, res) => {
     if (err) return console.error('Drive list error:', err);
-    const fileMetadata = { name: 'giveaways.json' };
     const media = {
       mimeType: 'application/json',
       body: fs.createReadStream('giveaways.json')
@@ -55,7 +55,7 @@ function backupToDrive() {
         if (err) console.error('Drive update error:', err);
       });
     } else {
-      drive.files.create({ resource: fileMetadata, media, fields: 'id' }, err => {
+      drive.files.create({ resource: { name: 'giveaways.json' }, media, fields: 'id' }, err => {
         if (err) console.error('Drive create error:', err);
       });
     }
@@ -77,12 +77,12 @@ app.get('/oauth2callback', async (req, res) => {
   const { code } = req.query;
   const { tokens } = await oauth2Client.getToken(code);
   fs.writeFileSync('token.json', JSON.stringify(tokens));
-  res.send('Authorization successful. You can close this tab.');
+  res.send('✅ Authorization successful. You can close this tab.');
 });
 
 app.get('/backup', (req, res) => {
   backupToDrive();
-  res.send('Manual backup triggered.');
+  res.send('✅ Manual backup triggered.');
 });
 
 function createSheet(title) {
@@ -95,10 +95,7 @@ function createSheet(title) {
       resource: {
         properties: { title },
         sheets: [{
-          properties: {
-            title: 'Participants',
-            gridProperties: { frozenRowCount: 1 }
-          },
+          properties: { title: 'Participants', gridProperties: { frozenRowCount: 1 } },
           data: [{
             startRow: 0,
             rowData: [{
@@ -134,53 +131,56 @@ function fisherYates(array) {
   return array;
 }
 
-bot.command('run', async ctx => {
-  if (!ctx.channelPost) return;
+// Command: /run (channel only)
+bot.on('channel_post', async ctx => {
+  const text = ctx.channelPost.text?.trim();
   const channelId = ctx.channelPost.chat.id;
-  const title = `Giveaway_${channelId}_${Date.now()}`;
-  const sheetUrl = await createSheet(title);
 
-  const msg = await ctx.telegram.sendMessage(channelId, `🎉 GIVEAWAY STARTED!
-Click to join using the button below!
-📊 Entries: 0`, {
-    reply_markup: {
+  if (text === '/run') {
+    const title = `Giveaway_${channelId}_${Date.now()}`;
+    const sheetUrl = await createSheet(title);
+
+    const msg = await ctx.telegram.sendMessage(channelId, `🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n📊 Entries: 0`, {
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '📄 View Sheet', url: sheetUrl }],
+          [{ text: '✅ Participate', callback_data: `join_${channelId}` }]
+        ]
+      }
+    });
+
+    giveaways[channelId] = {
+      message_id: msg.message_id,
+      sheetUrl,
+      participants: [],
+      winnerCount: channelConfig[channelId]?.winnerCount || 10,
+      format: channelConfig[channelId]?.format || '🎉 Congratulations {username}!',
+    };
+
+    saveGiveaways();
+    await ctx.deleteMessage(ctx.channelPost.message_id).catch(() => {});
+  }
+
+  if (text?.toLowerCase() === '/draw') {
+    const g = giveaways[channelId];
+    if (!g || g.participants.length === 0) return ctx.telegram.sendMessage(channelId, '❌ No participants found.');
+
+    const shuffled = fisherYates([...g.participants]);
+    const winners = shuffled.slice(0, g.winnerCount);
+    const result = winners.map(w => g.format.replace('{username}', `@${w.username}`)).join('\n');
+
+    await ctx.telegram.editMessageReplyMarkup(channelId, g.message_id, null, {
       inline_keyboard: [
-        [{ text: '📄 View Sheet', url: sheetUrl }],
-        [{ text: '✅ Participate', callback_data: `join_${channelId}` }]
+        [{ text: '📄 View Sheet', url: g.sheetUrl }],
+        [{ text: '⛔ Giveaway Ended', callback_data: 'ended' }]
       ]
-    }
-  });
+    });
 
-  giveaways[channelId] = {
-    message_id: msg.message_id,
-    sheetUrl,
-    participants: [],
-    format: '🎉 Congratulations {username}!',
-    winnerCount: 10
-  };
-
-  saveGiveaways();
-});
-
-bot.command('draw', async ctx => {
-  const channelId = ctx.chat.id;
-  const g = giveaways[channelId];
-  if (!g || g.participants.length === 0) return ctx.reply('No participants found.');
-
-  const shuffled = fisherYates([...g.participants]);
-  const winners = shuffled.slice(0, g.winnerCount);
-  const result = winners.map(w => g.format.replace('{username}', `@${w.username}`)).join('\n');
-
-  await ctx.telegram.editMessageReplyMarkup(channelId, g.message_id, null, {
-    inline_keyboard: [
-      [{ text: '📄 View Sheet', url: g.sheetUrl }],
-      [{ text: '⛔ Giveaway Ended', callback_data: 'ended', hide: true }]
-    ]
-  });
-
-  ctx.reply(`🏆 WINNER ANNOUNCEMENT 🏆\n${result}`);
-  delete giveaways[channelId];
-  saveGiveaways();
+    await ctx.telegram.sendMessage(channelId, `🏆 WINNER ANNOUNCEMENT 🏆\n${result}`);
+    delete giveaways[channelId];
+    saveGiveaways();
+    await ctx.deleteMessage(ctx.channelPost.message_id).catch(() => {});
+  }
 });
 
 bot.on('callback_query', async ctx => {
@@ -211,9 +211,7 @@ bot.on('callback_query', async ctx => {
   });
 
   await ctx.answerCbQuery('Successfully joined!');
-  await ctx.telegram.editMessageText(ctx.chat.id, g.message_id, null, `🎉 GIVEAWAY STARTED!
-Click to join using the button below!
-📊 Entries: ${g.participants.length}`, {
+  await ctx.telegram.editMessageText(channelId, g.message_id, null, `🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n📊 Entries: ${g.participants.length}`, {
     reply_markup: {
       inline_keyboard: [
         [{ text: '📄 View Sheet', url: g.sheetUrl }],
@@ -225,7 +223,76 @@ Click to join using the button below!
   saveGiveaways();
 });
 
-// Boot
+bot.command('start', ctx => {
+  if (ctx.chat.type !== 'private') return;
+  ctx.reply('🎉 Welcome to MyPickerBot!\nUse the buttons below to manage your giveaways.', {
+    reply_markup: {
+      keyboard: [
+        ['⚙️ Configure Giveaway'],
+        ['📋 My Bound Channels']
+      ],
+      resize_keyboard: true
+    }
+  });
+});
+
+bot.hears('⚙️ Configure Giveaway', async ctx => {
+  const cid = ctx.from.id;
+  const config = channelConfig[cid] || { winnerCount: 10, format: '🎉 Congratulations {username}!' };
+  await ctx.reply(`⚙️ Giveaway Configuration:\nWinner Count: ${config.winnerCount}\nFormat: ${config.format}`, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: 'Set Winner Count', callback_data: 'set_winner_count' }],
+        [{ text: 'Set Custom Format', callback_data: 'set_custom_format' }],
+        [{ text: 'Reset to Default', callback_data: 'reset_config' }]
+      ]
+    }
+  });
+});
+
+bot.action('set_winner_count', async ctx => {
+  channelConfig[ctx.from.id] = channelConfig[ctx.from.id] || {};
+  channelConfig[ctx.from.id].awaitingWinnerCount = true;
+  await ctx.reply('Enter number of winners:');
+  await ctx.answerCbQuery();
+});
+
+bot.action('set_custom_format', async ctx => {
+  channelConfig[ctx.from.id] = channelConfig[ctx.from.id] || {};
+  channelConfig[ctx.from.id].awaitingCustomFormat = true;
+  await ctx.reply('Enter winner format using {username}:');
+  await ctx.answerCbQuery();
+});
+
+bot.action('reset_config', async ctx => {
+  channelConfig[ctx.from.id] = { winnerCount: 10, format: '🎉 Congratulations {username}!' };
+  await ctx.reply('✅ Configuration reset.');
+  await ctx.answerCbQuery();
+});
+
+bot.on('message', async ctx => {
+  const id = ctx.from.id;
+  const msg = ctx.message.text;
+
+  if (channelConfig[id]?.awaitingWinnerCount) {
+    const n = parseInt(msg);
+    if (n > 0 && n <= 100) {
+      channelConfig[id].winnerCount = n;
+      channelConfig[id].awaitingWinnerCount = false;
+      await ctx.reply(`✅ Winner count set to ${n}`);
+    } else {
+      await ctx.reply('❌ Please enter a valid number between 1-100');
+    }
+  }
+
+  if (channelConfig[id]?.awaitingCustomFormat) {
+    channelConfig[id].format = msg;
+    channelConfig[id].awaitingCustomFormat = false;
+    await ctx.reply(`✅ Custom format set:\n${msg}`);
+  }
+});
+
+// Init
 loadGiveaways();
 bot.launch();
 app.listen(3000, () => {
@@ -233,8 +300,7 @@ app.listen(3000, () => {
   if (fs.existsSync('token.json')) console.log('✅ Google Sheets authorized!');
 });
 
-// Cron backup
 cron.schedule('0 0 * * *', () => {
-  console.log('🕒 Daily Drive backup triggered...');
+  console.log('🕒 Daily Drive backup...');
   backupToDrive();
 });
