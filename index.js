@@ -1,3 +1,4 @@
+// index.js — Telegram Giveaway Bot FINAL
 require('dotenv').config();
 const fs = require('fs');
 const express = require('express');
@@ -21,8 +22,6 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 let giveaways = {};
-let channelConfig = {};
-
 function loadGiveaways() {
   try {
     giveaways = JSON.parse(fs.readFileSync('giveaways.json'));
@@ -30,15 +29,13 @@ function loadGiveaways() {
     giveaways = {};
   }
 }
-
 function saveGiveaways() {
   fs.writeFileSync('giveaways.json', JSON.stringify(giveaways, null, 2));
 }
 
 function backupToDrive() {
   if (!fs.existsSync('token.json')) return;
-  const token = JSON.parse(fs.readFileSync('token.json'));
-  oauth2Client.setCredentials(token);
+  oauth2Client.setCredentials(JSON.parse(fs.readFileSync('token.json')));
   const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
   drive.files.list({
@@ -46,16 +43,15 @@ function backupToDrive() {
     fields: 'files(id, name)'
   }, (err, res) => {
     if (err) return console.error('Drive list error:', err);
-    const media = {
-      mimeType: 'application/json',
-      body: fs.createReadStream('giveaways.json')
-    };
+    const fileMetadata = { name: 'giveaways.json' };
+    const media = { mimeType: 'application/json', body: fs.createReadStream('giveaways.json') };
+
     if (res.data.files.length > 0) {
       drive.files.update({ fileId: res.data.files[0].id, media }, err => {
         if (err) console.error('Drive update error:', err);
       });
     } else {
-      drive.files.create({ resource: { name: 'giveaways.json' }, media, fields: 'id' }, err => {
+      drive.files.create({ resource: fileMetadata, media, fields: 'id' }, err => {
         if (err) console.error('Drive create error:', err);
       });
     }
@@ -65,10 +61,7 @@ function backupToDrive() {
 app.get('/auth', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
-    scope: [
-      'https://www.googleapis.com/auth/spreadsheets',
-      'https://www.googleapis.com/auth/drive.file'
-    ]
+    scope: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file']
   });
   res.redirect(url);
 });
@@ -77,12 +70,12 @@ app.get('/oauth2callback', async (req, res) => {
   const { code } = req.query;
   const { tokens } = await oauth2Client.getToken(code);
   fs.writeFileSync('token.json', JSON.stringify(tokens));
-  res.send('✅ Authorization successful. You can close this tab.');
+  res.send('Authorization successful. You can close this tab.');
 });
 
 app.get('/backup', (req, res) => {
   backupToDrive();
-  res.send('✅ Manual backup triggered.');
+  res.send('Manual backup triggered.');
 });
 
 function createSheet(title) {
@@ -131,12 +124,10 @@ function fisherYates(array) {
   return array;
 }
 
-// Command: /run (channel only)
+// ✅ SUPPORT FOR CHANNEL POST: This is what you need!
 bot.on('channel_post', async ctx => {
-  const text = ctx.channelPost.text?.trim();
-  const channelId = ctx.channelPost.chat.id;
-
-  if (text === '/run') {
+  if (ctx.channelPost.text === '/run') {
+    const channelId = ctx.channelPost.chat.id;
     const title = `Giveaway_${channelId}_${Date.now()}`;
     const sheetUrl = await createSheet(title);
 
@@ -153,34 +144,33 @@ bot.on('channel_post', async ctx => {
       message_id: msg.message_id,
       sheetUrl,
       participants: [],
-      winnerCount: channelConfig[channelId]?.winnerCount || 10,
-      format: channelConfig[channelId]?.format || '🎉 Congratulations {username}!',
+      format: '🎉 Congratulations {username}!',
+      winnerCount: 10
     };
 
     saveGiveaways();
-    await ctx.deleteMessage(ctx.channelPost.message_id).catch(() => {});
   }
+});
 
-  if (text?.toLowerCase() === '/draw') {
-    const g = giveaways[channelId];
-    if (!g || g.participants.length === 0) return ctx.telegram.sendMessage(channelId, '❌ No participants found.');
+bot.command('draw', async ctx => {
+  const channelId = ctx.chat.id;
+  const g = giveaways[channelId];
+  if (!g || g.participants.length === 0) return ctx.reply('No participants found.');
 
-    const shuffled = fisherYates([...g.participants]);
-    const winners = shuffled.slice(0, g.winnerCount);
-    const result = winners.map(w => g.format.replace('{username}', `@${w.username}`)).join('\n');
+  const shuffled = fisherYates([...g.participants]);
+  const winners = shuffled.slice(0, g.winnerCount);
+  const result = winners.map(w => g.format.replace('{username}', `@${w.username}`)).join('\n');
 
-    await ctx.telegram.editMessageReplyMarkup(channelId, g.message_id, null, {
-      inline_keyboard: [
-        [{ text: '📄 View Sheet', url: g.sheetUrl }],
-        [{ text: '⛔ Giveaway Ended', callback_data: 'ended' }]
-      ]
-    });
+  await ctx.telegram.editMessageReplyMarkup(channelId, g.message_id, null, {
+    inline_keyboard: [
+      [{ text: '📄 View Sheet', url: g.sheetUrl }],
+      [{ text: '⛔ Giveaway Ended', callback_data: 'ended', hide: true }]
+    ]
+  });
 
-    await ctx.telegram.sendMessage(channelId, `🏆 WINNER ANNOUNCEMENT 🏆\n${result}`);
-    delete giveaways[channelId];
-    saveGiveaways();
-    await ctx.deleteMessage(ctx.channelPost.message_id).catch(() => {});
-  }
+  ctx.reply(`🏆 WINNER ANNOUNCEMENT 🏆\n${result}`);
+  delete giveaways[channelId];
+  saveGiveaways();
 });
 
 bot.on('callback_query', async ctx => {
@@ -223,76 +213,7 @@ bot.on('callback_query', async ctx => {
   saveGiveaways();
 });
 
-bot.command('start', ctx => {
-  if (ctx.chat.type !== 'private') return;
-  ctx.reply('🎉 Welcome to MyPickerBot!\nUse the buttons below to manage your giveaways.', {
-    reply_markup: {
-      keyboard: [
-        ['⚙️ Configure Giveaway'],
-        ['📋 My Bound Channels']
-      ],
-      resize_keyboard: true
-    }
-  });
-});
-
-bot.hears('⚙️ Configure Giveaway', async ctx => {
-  const cid = ctx.from.id;
-  const config = channelConfig[cid] || { winnerCount: 10, format: '🎉 Congratulations {username}!' };
-  await ctx.reply(`⚙️ Giveaway Configuration:\nWinner Count: ${config.winnerCount}\nFormat: ${config.format}`, {
-    reply_markup: {
-      inline_keyboard: [
-        [{ text: 'Set Winner Count', callback_data: 'set_winner_count' }],
-        [{ text: 'Set Custom Format', callback_data: 'set_custom_format' }],
-        [{ text: 'Reset to Default', callback_data: 'reset_config' }]
-      ]
-    }
-  });
-});
-
-bot.action('set_winner_count', async ctx => {
-  channelConfig[ctx.from.id] = channelConfig[ctx.from.id] || {};
-  channelConfig[ctx.from.id].awaitingWinnerCount = true;
-  await ctx.reply('Enter number of winners:');
-  await ctx.answerCbQuery();
-});
-
-bot.action('set_custom_format', async ctx => {
-  channelConfig[ctx.from.id] = channelConfig[ctx.from.id] || {};
-  channelConfig[ctx.from.id].awaitingCustomFormat = true;
-  await ctx.reply('Enter winner format using {username}:');
-  await ctx.answerCbQuery();
-});
-
-bot.action('reset_config', async ctx => {
-  channelConfig[ctx.from.id] = { winnerCount: 10, format: '🎉 Congratulations {username}!' };
-  await ctx.reply('✅ Configuration reset.');
-  await ctx.answerCbQuery();
-});
-
-bot.on('message', async ctx => {
-  const id = ctx.from.id;
-  const msg = ctx.message.text;
-
-  if (channelConfig[id]?.awaitingWinnerCount) {
-    const n = parseInt(msg);
-    if (n > 0 && n <= 100) {
-      channelConfig[id].winnerCount = n;
-      channelConfig[id].awaitingWinnerCount = false;
-      await ctx.reply(`✅ Winner count set to ${n}`);
-    } else {
-      await ctx.reply('❌ Please enter a valid number between 1-100');
-    }
-  }
-
-  if (channelConfig[id]?.awaitingCustomFormat) {
-    channelConfig[id].format = msg;
-    channelConfig[id].awaitingCustomFormat = false;
-    await ctx.reply(`✅ Custom format set:\n${msg}`);
-  }
-});
-
-// Init
+// Start
 loadGiveaways();
 bot.launch();
 app.listen(3000, () => {
@@ -301,6 +222,6 @@ app.listen(3000, () => {
 });
 
 cron.schedule('0 0 * * *', () => {
-  console.log('🕒 Daily Drive backup...');
+  console.log('🕒 Daily Drive backup triggered...');
   backupToDrive();
 });
