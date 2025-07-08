@@ -1,3 +1,5 @@
+// index.js — MyPickerBot (Full Version with Webhook, Persistence, Drive Backup)
+
 require('dotenv').config();
 const fs = require('fs');
 const express = require('express');
@@ -7,13 +9,14 @@ const { Telegraf } = require('telegraf');
 const bodyParser = require('body-parser');
 const cron = require('node-cron');
 const crypto = require('crypto');
+const path = require('path');
 
 const app = express();
-const bot = new Telegraf(process.env.BOT_TOKEN);
-
-app.use(session({ secret: 'giveaway_secret', resave: false, saveUninitialized: true }));
+app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(session({ secret: 'giveaway_secret', resave: false, saveUninitialized: true }));
 
+const bot = new Telegraf(process.env.BOT_TOKEN);
 const oauth2Client = new google.auth.OAuth2(
   process.env.CLIENT_ID,
   process.env.CLIENT_SECRET,
@@ -21,6 +24,7 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 let giveaways = {};
+
 function loadGiveaways() {
   try {
     giveaways = JSON.parse(fs.readFileSync('giveaways.json'));
@@ -28,6 +32,7 @@ function loadGiveaways() {
     giveaways = {};
   }
 }
+
 function saveGiveaways() {
   fs.writeFileSync('giveaways.json', JSON.stringify(giveaways, null, 2));
 }
@@ -37,16 +42,17 @@ function backupToDrive() {
   const token = JSON.parse(fs.readFileSync('token.json'));
   oauth2Client.setCredentials(token);
   const drive = google.drive({ version: 'v3', auth: oauth2Client });
+
   drive.files.list({
     q: "name='giveaways.json' and trashed=false",
-    fields: 'files(id, name)'
+    fields: 'files(id)'
   }, (err, res) => {
     if (err) return console.error('Drive list error:', err);
     const media = {
       mimeType: 'application/json',
       body: fs.createReadStream('giveaways.json')
     };
-    if (res.data.files.length > 0) {
+    if (res.data.files.length) {
       drive.files.update({ fileId: res.data.files[0].id, media }, err => {
         if (err) console.error('Drive update error:', err);
       });
@@ -68,71 +74,52 @@ function shuffle(array) {
   return array;
 }
 
-app.get('/', (req, res) => res.send('✅ Telegram Giveaway Bot is running.'));
-app.get('/auth', (req, res) => {
-  const url = oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file']
-  });
-  res.redirect(url);
-});
-app.get('/oauth2callback', async (req, res) => {
-  const { code } = req.query;
-  const { tokens } = await oauth2Client.getToken(code);
-  fs.writeFileSync('token.json', JSON.stringify(tokens));
-  res.send('Authorization successful. You can close this tab.');
-});
-app.get('/backup', (req, res) => {
-  backupToDrive();
-  res.send('Manual backup triggered.');
-});
+function getUtcTimeString() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(now.getUTCDate())}/${pad(now.getUTCMonth() + 1)}/${now.getUTCFullYear()} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())} UTC`;
+}
 
-function createSheet(title) {
-  return new Promise((resolve, reject) => {
-    if (!fs.existsSync('token.json')) return reject('No token');
-    const token = JSON.parse(fs.readFileSync('token.json'));
-    oauth2Client.setCredentials(token);
-    const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
-    sheets.spreadsheets.create({
-      resource: {
-        properties: { title },
-        sheets: [{
-          properties: {
-            title: 'Participants',
-            gridProperties: { frozenRowCount: 1 }
-          },
-          data: [{
-            startRow: 0,
-            startColumn: 0,
-            rowData: [{
-              values: [
-                { userEnteredValue: { stringValue: 'User ID' }, userEnteredFormat: { textFormat: { bold: true } } },
-                { userEnteredValue: { stringValue: 'Username' }, userEnteredFormat: { textFormat: { bold: true } } },
-                { userEnteredValue: { stringValue: 'Join Time' }, userEnteredFormat: { textFormat: { bold: true } } }
-              ]
-            }]
+async function createSheet(title) {
+  if (!fs.existsSync('token.json')) throw 'No token.json';
+  const token = JSON.parse(fs.readFileSync('token.json'));
+  oauth2Client.setCredentials(token);
+  const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
+
+  const res = await sheets.spreadsheets.create({
+    resource: {
+      properties: { title },
+      sheets: [{
+        properties: { title: 'Participants', gridProperties: { frozenRowCount: 1 } },
+        data: [{
+          startRow: 0,
+          startColumn: 0,
+          rowData: [{
+            values: [
+              { userEnteredValue: { stringValue: 'User ID' }, userEnteredFormat: { textFormat: { bold: true } } },
+              { userEnteredValue: { stringValue: 'Username' }, userEnteredFormat: { textFormat: { bold: true } } },
+              { userEnteredValue: { stringValue: 'Join Time' }, userEnteredFormat: { textFormat: { bold: true } } }
+            ]
           }]
         }]
-      }
-    }, async (err, res) => {
-      if (err) return reject(err);
-      const sheetId = res.data.spreadsheetId;
-      const drive = google.drive({ version: 'v3', auth: oauth2Client });
-      await drive.permissions.create({
-        fileId: sheetId,
-        requestBody: { role: 'reader', type: 'anyone' }
-      });
-      resolve(`https://docs.google.com/spreadsheets/d/${sheetId}/edit`);
-    });
+      }]
+    }
   });
+
+  const sheetId = res.data.spreadsheetId;
+  const drive = google.drive({ version: 'v3', auth: oauth2Client });
+  await drive.permissions.create({ fileId: sheetId, requestBody: { role: 'reader', type: 'anyone' } });
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
 }
 
 bot.on('channel_post', async ctx => {
   const text = ctx.channelPost.text;
   if (!text || !text.startsWith('/run')) return;
+
   const channelId = ctx.channelPost.chat.id;
   const title = `Giveaway_${channelId}_${Date.now()}`;
   const sheetUrl = await createSheet(title);
+
   const msg = await ctx.telegram.sendMessage(channelId, `🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n📊 Entries: 0`, {
     reply_markup: {
       inline_keyboard: [
@@ -141,6 +128,7 @@ bot.on('channel_post', async ctx => {
       ]
     }
   });
+
   giveaways[channelId] = {
     message_id: msg.message_id,
     sheetUrl,
@@ -148,22 +136,26 @@ bot.on('channel_post', async ctx => {
     format: '🎉 Congratulations {username}!',
     winnerCount: 10
   };
+
   saveGiveaways();
 });
 
 bot.command('draw', async ctx => {
   const channelId = ctx.chat.id;
   const data = giveaways[channelId];
-  if (!data || data.participants.length === 0) return ctx.reply('No participants.');
+  if (!data || !data.participants.length) return ctx.reply('No participants found.');
+
   const winners = shuffle([...data.participants]).slice(0, data.winnerCount);
   const formatted = winners.map(w => data.format.replace('{username}', `@${w.username}`)).join('\n');
-  ctx.telegram.editMessageReplyMarkup(channelId, data.message_id, null, {
+
+  await ctx.telegram.editMessageReplyMarkup(channelId, data.message_id, null, {
     inline_keyboard: [
       [{ text: '📄 View Sheet', url: data.sheetUrl }],
       [{ text: '⛔ Giveaway Ended', callback_data: 'ended' }]
     ]
   });
-  ctx.reply(`🏆 WINNER ANNOUNCEMENT 🏆\n${formatted}`);
+
+  await ctx.reply(`🏆 WINNER ANNOUNCEMENT 🏆\n${formatted}`);
   delete giveaways[channelId];
   saveGiveaways();
 });
@@ -171,20 +163,23 @@ bot.command('draw', async ctx => {
 bot.on('callback_query', async ctx => {
   const id = ctx.callbackQuery.data;
   if (!id.startsWith('join_')) return;
+
   const channelId = parseInt(id.split('_')[1]);
   const data = giveaways[channelId];
-  if (!data) return ctx.answerCbQuery('Giveaway not found.');
+  if (!data) return ctx.answerCbQuery('Giveaway not found or expired.');
+
   const userId = ctx.from.id;
   if (data.participants.some(p => p.id === userId)) return ctx.answerCbQuery('Already joined!');
+
   const username = ctx.from.username || 'unknown';
-  const now = new Date();
-  const joinTime = `${String(now.getUTCDate()).padStart(2, '0')}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${now.getUTCFullYear()} ${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} UTC`;
+  const joinTime = getUtcTimeString();
   data.participants.push({ id: userId, username, joinTime });
 
   const token = JSON.parse(fs.readFileSync('token.json'));
   oauth2Client.setCredentials(token);
   const sheets = google.sheets({ version: 'v4', auth: oauth2Client });
   const sheetId = data.sheetUrl.split('/d/')[1].split('/')[0];
+
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId,
     range: 'Participants!A:C',
@@ -194,7 +189,7 @@ bot.on('callback_query', async ctx => {
     }
   });
 
-  await ctx.answerCbQuery('Joined!');
+  await ctx.answerCbQuery('Successfully joined!');
   await ctx.telegram.editMessageText(channelId, data.message_id, null, `🎉 GIVEAWAY STARTED!\nClick to join using the button below!\n📊 Entries: ${data.participants.length}`, {
     reply_markup: {
       inline_keyboard: [
@@ -203,19 +198,42 @@ bot.on('callback_query', async ctx => {
       ]
     }
   });
+
   saveGiveaways();
 });
 
-loadGiveaways();
+app.get('/', (req, res) => res.send('Bot is running.'));
+app.get('/auth', (req, res) => {
+  const url = oauth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: [
+      'https://www.googleapis.com/auth/spreadsheets',
+      'https://www.googleapis.com/auth/drive.file'
+    ]
+  });
+  res.redirect(url);
+});
 
-// Webhook mode for Railway
-const PORT = process.env.PORT || 3000;
-bot.telegram.setWebhook(`${process.env.BASE_URL}/bot${process.env.BOT_TOKEN}`);
-app.use(bot.webhookCallback(`/bot${process.env.BOT_TOKEN}`));
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+app.get('/oauth2callback', async (req, res) => {
+  const { code } = req.query;
+  const { tokens } = await oauth2Client.getToken(code);
+  fs.writeFileSync('token.json', JSON.stringify(tokens));
+  res.send('Authorization successful. You can close this tab.');
+});
 
-// Daily 00:00 backup
-cron.schedule('0 0 * * *', () => {
-  console.log('📁 Daily backup to Drive triggered');
+app.get('/backup', (req, res) => {
   backupToDrive();
+  res.send('Backup triggered.');
+});
+
+// Run daily at midnight
+cron.schedule('0 0 * * *', () => {
+  console.log('⏳ Daily backup to Drive...');
+  backupToDrive();
+});
+
+loadGiveaways();
+app.use(bot.webhookCallback('/bot'));
+app.listen(process.env.PORT || 3000, () => {
+  console.log(`🚀 Server running`);
 });
