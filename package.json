@@ -1,18 +1,31 @@
 {
   "name": "telepicker-bot",
   "version": "1.0.0",
-  "description": "Telegram Giveaway Bot with Google Sheets & Drive backup",
+  "description": "🎉 Telegram Giveaway Bot using Telegraf + Google Sheets + Google Drive Backup",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "dotenv": "^17.0.1",
-    "express": "^4.18.2",
-    "express-session": "^1.17.3",
-    "googleapis": "^132.0.0",
-    "node-cron": "^3.0.2",
     "telegraf": "^4.12.2",
-    "uuid": "^9.0.0"
-  }
+    "express": "^4.18.2",
+    "googleapis": "^133.0.0",
+    "dotenv": "^17.0.1",
+    "express-session": "^1.17.3",
+    "body-parser": "^1.20.2",
+    "node-cron": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "telegram-bot",
+    "giveaway",
+    "telegraf",
+    "google-sheets",
+    "google-drive",
+    "railway"
+  ],
+  "author": "cloudyyy",
+  "license": "MIT"
 }
