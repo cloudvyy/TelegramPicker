@@ -1,4 +1,4 @@
-# Project Name  
+# Telegram Picker
 
 [![Project Status: On Hold](https://img.shields.io/badge/status-on_hold-yellow.svg)](https://github.com/cloudvyy/TelegramPicker)  
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cloudvyy/TelegramPicker?tab=MIT-1-ov-file)  
@@ -36,4 +36,4 @@ This project is open-source under the [MIT License](LICENSE).
 
 ---
 
-*Last updated: {Month YYYY}*  
+*Last updated: {Jully 2025}*  
