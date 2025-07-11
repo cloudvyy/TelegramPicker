@@ -1,39 +1,39 @@
-Telegram Picker
+# Project Name  
 
-Note: This project is currently on hold/paused due to other commitments. Development may resume in the future.
+[![Project Status: On Hold](https://img.shields.io/badge/status-on_hold-yellow.svg)](https://github.com/cloudvyy/TelegramPicker)  
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/cloudvyy/TelegramPicker?tab=MIT-1-ov-file)  
 
-📌 Project Status
-🚧 Development Paused
-This project is temporarily inactive due to:
+⚠️ **Project Paused Indefinitely**  
+**This project is currently on hold** due to time constraints, shifting priorities, or other commitments. No active development is expected in the near future, but it may be revisited later.  
 
-Limited time/resources
+---
 
-Higher-priority commitments
+## 📋 Overview  
+A brief description of what the project does or its original goals.  
 
-Possible reevaluation of project direction
+## 🛠 Current State  
+- **Core functionality**: [✔️ Partially implemented /  ❌ Stable / ❌ Incomplete]   
+- **Dependencies**: [Node.js]  
 
-While no active work is being done, I may revisit it later. Contributions or forks are welcome if you're interested!
+## 🚧 Why Development Is Paused  
+- Limited time/resources  
+- Higher-priority personal/work projects  
+- Potential redesign/reevaluation needed  
 
-🔧 Features (If Applicable)
-Basic functionality
+## 🔮 Future Plans (If Resumed)  
+- [ ] Feature auto backup to google drive  
+- [ ] Bug fix for the final launching
+- [ ] Documentation improvements  
 
-Planned features (unimplemented)
+## 🤝 Contributing & Forking  
+While I’m unable to maintain this project actively:  
+- **Feel free to fork** and adapt the code for your needs.  
+- **PRs are welcome**, but I may not respond promptly.  
+- Open an **Issue** to discuss major changes or collaborations.  
 
-💡 Future Plans (If Any)
-If development resumes, the following may be considered:
+## 📜 License  
+This project is open-source under the [MIT License](LICENSE).  
 
-Feature A
+---
 
-Refactor X
-
-Integration with Y
-
-🤝 Contributing
-Even though the project is on hold:
-
-Issues/PRs are welcome (but responses may be delayed).
-
-Feel free to fork and modify the project.
-
-📜 License
-This project is licensed under MIT (or your chosen license).
+*Last updated: {Month YYYY}*  
