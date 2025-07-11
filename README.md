@@ -9,7 +9,7 @@
 --- 
 
 ## 🛠 Current State  
-- **Core functionality**: [✔️ Partially implemented /  ❌ Stable / ❌ Incomplete]   
+- **Core functionality**: [✔️ Partially implemented /  ❌ Stable / ✔️ Incomplete]   
 - **Dependencies**: [Node.js]  
 
 ## 🚧 Why Development Is Paused  
