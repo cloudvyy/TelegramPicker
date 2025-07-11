@@ -6,10 +6,7 @@
 ⚠️ **Project Paused Indefinitely**  
 **This project is currently on hold** due to time constraints, shifting priorities, or other commitments. No active development is expected in the near future, but it may be revisited later.  
 
----
-
-## 📋 Overview  
-A brief description of what the project does or its original goals.  
+--- 
 
 ## 🛠 Current State  
 - **Core functionality**: [✔️ Partially implemented /  ❌ Stable / ❌ Incomplete]   
