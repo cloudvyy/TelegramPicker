@@ -1,59 +1,39 @@
-# 🎁 TelePicker Bot – Fair Telegram Giveaway Picker
+Telegram Picker
 
-A powerful Telegram bot to run fair and transparent giveaways using Google Sheets – with no manual participant tracking. Created for maximum ease, privacy, and trust using the [Fisher-Yates Shuffle](https://en.wikipedia.org/wiki/Fisher–Yates_shuffle) algorithm for fairness.
+Note: This project is currently on hold/paused due to other commitments. Development may resume in the future.
 
-## ✨ Features
+📌 Project Status
+🚧 Development Paused
+This project is temporarily inactive due to:
 
-- ✅ Run giveaways in your channel using `/run`
-- 🔗 Bind/unbind channels in private chat
-- 📋 Google Sheets auto-created with headers: `User ID`, `Username`, `Join Time`
-- ⏱ Join time recorded in UTC: `dd/mm/yyyy HH:MM UTC`
-- ⚙️ Configure winner announcement format
-- 👥 Join via inline **Participate** button
-- 📈 Live entry count + public sheet link
-- 🎉 Fair winner selection using Fisher-Yates shuffle (unbiased)
-- 🔐 Sheet is **publicly readable** — no login required
-- 🧼 Automatically deletes `/run` and `/draw` command after posting
-- ❌ Closes participation after winners drawn
+Limited time/resources
 
-## 🚀 Try It Live
+Higher-priority commitments
 
-👉 [@MyPickerBot](https://t.me/MyPickerBot)
+Possible reevaluation of project direction
 
-## 💡 How It Works
+While no active work is being done, I may revisit it later. Contributions or forks are welcome if you're interested!
 
-1. DM `/start` to the bot.
-2. Use **"🔗 Bind Channel"** → Forward any message from your channel.
-3. Use `/run` in the channel to start a giveaway.
-4. View live entries in Google Sheets.
-5. Use `/draw` in the channel to pick winners.
+🔧 Features (If Applicable)
+Basic functionality
 
-## 🔒 Fairness: Fisher-Yates Algorithm
+Planned features (unimplemented)
 
-This bot uses the **Fisher-Yates Shuffle** for random winner selection. Unlike biased sorting or last-clicked entries, this method ensures **every participant has an equal chance**. Verified for unbiased randomness.
+💡 Future Plans (If Any)
+If development resumes, the following may be considered:
 
-> The Fisher-Yates shuffle randomly permutes the participant list by swapping entries from the end toward the beginning using a secure random index. It is the gold standard in fair random selection.
+Feature A
 
-## 🆓 Zero-Cost Deployment
+Refactor X
 
-Deploy on **Railway** without credit card:
+Integration with Y
 
-[![Deploy on Railway](https://railway.app/button.svg)](https://railway.com?referralCode=JsglRy)
+🤝 Contributing
+Even though the project is on hold:
 
-Or use this referral link for bonus:  
-**🔗 [[https://railway.com?referralCode=JsglRy](https://railway.com?referralCode=JsglRy](https://railway.com?referralCode=JsglRy))**
+Issues/PRs are welcome (but responses may be delayed).
 
-> 📝 Don't forget to authorize Google Sheets (visit `/auth`) once deployed.
+Feel free to fork and modify the project.
 
-## 🛠 .env Setup
-
-```env
-BOT_TOKEN=your_bot_token
-CLIENT_ID=your_google_client_id
-CLIENT_SECRET=your_google_client_secret
-REDIRECT_URI=https://your-railway-app.up.railway.app/oauth2callback
-```
-
-## 📄 License
-
-MIT © [MyPickerBot]
+📜 License
+This project is licensed under MIT (or your chosen license).
